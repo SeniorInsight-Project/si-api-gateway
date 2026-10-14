@@ -1,0 +1,29 @@
+name: Origem do PR para main
+
+# main é produção: só recebe PR vindo de develop (ou de hotfix/* para correção urgente).
+# O job "origem-do-pr" é exigido pela regra da branch main.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+
+permissions: {}
+
+jobs:
+  origem-do-pr:
+    name: origem-do-pr
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Conferir a branch de origem
+        env:
+          ORIGEM: ${{ github.head_ref }}
+          MESMO_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          if [ "$MESMO_REPO" = "true" ] && { [ "$ORIGEM" = "develop" ] || [[ "$ORIGEM" == hotfix/* ]]; }; then
+            echo "Origem permitida: $ORIGEM"
+          else
+            echo "::error::PR para main só pode vir de develop ou de hotfix/* deste repositório (origem: $ORIGEM). Abra o PR para develop."
+            exit 1
+          fi
