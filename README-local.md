@@ -7,11 +7,14 @@ Gateway HTTP do SeniorInsight, implementado com Java 21, Spring Boot WebFlux e S
 | Entrada | Serviço de destino | Caminho encaminhado |
 |---|---|---|
 | `/api/v1/identity/**` | `identity-service:8080` | `/v1/**` |
+| `/api/v1/notifications/**` | `notification-service:8080` | `/v1/**` |
 | `/api/v1/**` | `backend-core:8080` | preservado |
 | `/` | `backend-core:8080` | preservado |
 | `/actuator/health` | próprio gateway | health do gateway |
 
-O `identity-service` exige JWT OIDC do Keycloak. O gateway valida assinatura, issuer, `exp` e `nbf` nesses caminhos, e o serviço valida novamente o token. Os endpoints antigos de autenticação do `backend-core` continuam públicos para preservar o fluxo existente; as outras rotas do backend são protegidas pelo filtro HMAC já implementado nele. O gateway encaminha o bearer token sem modificá-lo.
+As rotas de `identity-service` e `notification-service` exigem JWT OIDC do Keycloak. O gateway valida assinatura, issuer, `exp` e `nbf` nesses caminhos, e encaminha o bearer token sem modificá-lo. Os endpoints antigos de autenticação do `backend-core` continuam públicos para preservar o fluxo existente; as outras rotas do backend são protegidas pelo filtro HMAC já implementado nele.
+
+A URI interna do serviço de notificações é configurada por `NOTIFICATION_SERVICE_URI` (padrão local: `http://localhost:8083`; no Compose: `http://notification-service:8080`). A rota encaminha `/api/v1/notifications/{recurso}` como `/v1/{recurso}`. O esqueleto atual do serviço ainda não possui controllers HTTP; os endpoints precisam ser implementados nele para responder além de `404`.
 
 Essa divisão é transitória: antes de migrar o `backend-core` para tokens Keycloak, não se deve impor o resource server Keycloak a todas as rotas, pois os JWTs HMAC emitidos hoje pelo backend são incompatíveis. A etapa de migração deve substituir emissão e validação de tokens de forma coordenada com os clientes e então aplicar autenticação Keycloak no gateway para todas as rotas protegidas.
 

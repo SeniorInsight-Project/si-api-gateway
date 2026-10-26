@@ -22,9 +22,11 @@ public class SecurityConfig {
 
     @Bean
     @Order(1)
-    SecurityWebFilterChain identitySecurityWebFilterChain(ServerHttpSecurity http) {
+    SecurityWebFilterChain oidcApiSecurityWebFilterChain(ServerHttpSecurity http) {
         return http
-                .securityMatcher(ServerWebExchangeMatchers.pathMatchers("/api/v1/identity/**"))
+                .securityMatcher(ServerWebExchangeMatchers.pathMatchers(
+                        "/api/v1/identity/**",
+                        "/api/v1/notifications/**"))
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
                 .formLogin(ServerHttpSecurity.FormLoginSpec::disable)

@@ -18,6 +18,14 @@ spring:
           filters:
             - StripPrefix=3
             - PrefixPath=/v1
+        - id: notification-service
+          order: -1
+          uri: ${NOTIFICATION_SERVICE_URI:http://localhost:8083}
+          predicates:
+            - Path=/api/v1/notifications/**
+          filters:
+            - StripPrefix=3
+            - PrefixPath=/v1
         - id: backend-core-api
           uri: ${BACKEND_CORE_URI:http://localhost:8082}
           predicates:
