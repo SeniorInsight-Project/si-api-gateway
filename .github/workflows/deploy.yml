@@ -1,0 +1,19 @@
+name: Deploy na Azure
+
+# Cada push na main builda a imagem, publica no GHCR e atualiza o serviço "api-gateway"
+# na stack do Docker Swarm da VM da Azure. A lógica fica no workflow reutilizável do si-infra.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy:
+    uses: SeniorInsight-Project/si-infra/.github/workflows/servico-build-deploy.yml@main
+    with:
+      servico: api-gateway
