@@ -7,10 +7,15 @@ Gateway HTTP do SeniorInsight, implementado com Java 21, Spring Boot WebFlux e S
 | Entrada | Serviço de destino | Caminho encaminhado |
 |---|---|---|
 | `/api/v1/identity/**` | `identity-service:8080` | `/v1/**` |
-| `/api/v1/notifications/**` | `notification-service:8080` | `/v1/**` |
+| `/api/v1/notification/**` | `notification-service:8080` | `/v1/**` |
+| `/api/v1/telemetry/**` | `telemetry-service:8080` (`TELEMETRY_SERVICE_URI`) | `/v1/**` |
+| `/api/v1/insight/**` | `insight-service:8080` (`INSIGHT_SERVICE_URI`) | `/v1/**` |
+| `/api/v1/report/**` | `report-service:8080` (`REPORT_SERVICE_URI`) | `/v1/**` |
+| `/api/v1/billing/**` | `billing-service:8080` (`BILLING_SERVICE_URI`) | `/v1/**` |
 | `/api/v1/**` | `backend-core:8080` | preservado |
-| `/` | `backend-core:8080` | preservado |
 | `/actuator/health` | próprio gateway | health do gateway |
+
+Nenhum endpoint `/internal/**` dos serviços é alcançável pelo gateway: toda rota tem o predicado `SemInternal`, que não casa se algum segmento do path for `internal` (inclusive codificado ou em maiúsculas), e a requisição recebe `404` sem chegar ao serviço. Rota nova precisa do predicado; o `GatewaySecurityTest` falha se faltar.
 
 As rotas de `identity-service` e `notification-service` exigem JWT OIDC do Keycloak. O gateway valida assinatura, issuer, `exp` e `nbf` nesses caminhos, e encaminha o bearer token sem modificá-lo. Os endpoints antigos de autenticação do `backend-core` continuam públicos para preservar o fluxo existente; as outras rotas do backend são protegidas pelo filtro HMAC já implementado nele.
 
