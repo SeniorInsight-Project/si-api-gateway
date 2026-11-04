@@ -9,12 +9,15 @@ spring:
           jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8180/realms/seniorinsight/protocol/openid-connect/certs}
   cloud:
     gateway:
+      # Toda rota leva o predicado SemInternal: nenhum /internal/** dos serviços é alcançável pelo gateway
+      # (sem rota que case, a resposta é 404). Rota nova também precisa dele; o GatewaySecurityTest confere.
       routes:
         - id: identity-service
           order: -1
           uri: ${IDENTITY_SERVICE_URI:http://localhost:8081}
           predicates:
             - Path=/api/v1/identity/**
+            - name: SemInternal
           filters:
             # /api/v1/identity/pareamentos/codigos -> /v1/pareamentos/codigos
             - StripPrefix=3
@@ -24,8 +27,49 @@ spring:
           uri: ${NOTIFICATION_SERVICE_URI:http://localhost:8083}
           predicates:
             - Path=/api/v1/notification/**
+            - name: SemInternal
           filters:
             # /api/v1/notification/push-tokens -> /v1/push-tokens
+            - StripPrefix=3
+            - PrefixPath=/v1
+        - id: telemetry-service
+          order: -1
+          uri: ${TELEMETRY_SERVICE_URI:http://localhost:8084}
+          predicates:
+            - Path=/api/v1/telemetry/**
+            - name: SemInternal
+          filters:
+            # /api/v1/telemetry/idosos/{id}/hoje -> /v1/idosos/{id}/hoje
+            - StripPrefix=3
+            - PrefixPath=/v1
+        - id: insight-service
+          order: -1
+          uri: ${INSIGHT_SERVICE_URI:http://localhost:8085}
+          predicates:
+            - Path=/api/v1/insight/**
+            - name: SemInternal
+          filters:
+            # /api/v1/insight/idosos/{id}/score -> /v1/idosos/{id}/score
+            - StripPrefix=3
+            - PrefixPath=/v1
+        - id: report-service
+          order: -1
+          uri: ${REPORT_SERVICE_URI:http://localhost:8086}
+          predicates:
+            - Path=/api/v1/report/**
+            - name: SemInternal
+          filters:
+            # /api/v1/report/relatorios -> /v1/relatorios
+            - StripPrefix=3
+            - PrefixPath=/v1
+        - id: billing-service
+          order: -1
+          uri: ${BILLING_SERVICE_URI:http://localhost:8087}
+          predicates:
+            - Path=/api/v1/billing/**
+            - name: SemInternal
+          filters:
+            # /api/v1/billing/assinaturas -> /v1/assinaturas
             - StripPrefix=3
             - PrefixPath=/v1
         # Menor prioridade: tudo que sobrar em /api/v1/** vai para o care-service sem reescrita.
@@ -34,6 +78,7 @@ spring:
           uri: ${CARE_SERVICE_URI:${BACKEND_CORE_URI:http://localhost:8082}}
           predicates:
             - Path=/api/v1/**
+            - name: SemInternal
 
 server:
   port: ${SERVER_PORT:8080}

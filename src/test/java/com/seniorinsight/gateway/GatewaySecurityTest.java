@@ -3,6 +3,7 @@ package com.seniorinsight.gateway;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
+import java.net.URI;
 import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
@@ -11,9 +12,15 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.cloud.gateway.route.RouteDefinition;
+import org.springframework.cloud.gateway.route.RouteDefinitionLocator;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -35,7 +42,7 @@ import okhttp3.mockwebserver.RecordedRequest;
 
 /**
  * Sobe o gateway de verdade com um MockWebServer fazendo o papel do Keycloak (JWKS de teste)
- * e dos três serviços. Cada teste confere o que chegou ao serviço.
+ * e dos serviços. Cada teste confere o que chegou ao serviço.
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 class GatewaySecurityTest {
@@ -48,6 +55,12 @@ class GatewaySecurityTest {
     @Autowired
     WebTestClient client;
 
+    @Autowired
+    RouteDefinitionLocator rotas;
+
+    @LocalServerPort
+    int porta;
+
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {
         String base = BACKEND.url("").toString().replaceAll("/$", "");
@@ -56,6 +69,10 @@ class GatewaySecurityTest {
         registry.add("IDENTITY_SERVICE_URI", () -> base);
         registry.add("NOTIFICATION_SERVICE_URI", () -> base);
         registry.add("CARE_SERVICE_URI", () -> base);
+        registry.add("TELEMETRY_SERVICE_URI", () -> base);
+        registry.add("INSIGHT_SERVICE_URI", () -> base);
+        registry.add("REPORT_SERVICE_URI", () -> base);
+        registry.add("BILLING_SERVICE_URI", () -> base);
     }
 
     @BeforeEach
@@ -172,6 +189,138 @@ class GatewaySecurityTest {
     void raizNaoEhMaisRoteada() throws Exception {
         client.get().uri("/").exchange().expectStatus().isUnauthorized();
         assertThat(proximaRequisicaoDeServico()).isNull();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "/api/v1/telemetry/idosos/42/hoje, /v1/idosos/42/hoje",
+            "/api/v1/insight/idosos/42/score, /v1/idosos/42/score",
+            "/api/v1/report/relatorios?semana=2026-W45, /v1/relatorios?semana=2026-W45",
+            "/api/v1/billing/assinaturas/minha, /v1/assinaturas/minha"
+    })
+    void comTokenChegaAosServicosNovosReescritoParaV1(String caminho, String esperado) throws Exception {
+        String devolvido = client.get().uri(cru(caminho))
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token(KEY, ISSUER))
+                .exchange()
+                .expectStatus().isOk()
+                .returnResult(String.class).getResponseHeaders().getFirst("X-Correlation-Id");
+
+        RecordedRequest recebida = proximaRequisicaoDeServico();
+        assertThat(recebida.getPath()).isEqualTo(esperado);
+        assertThat(recebida.getHeader(HttpHeaders.AUTHORIZATION)).startsWith("Bearer ");
+        assertThat(recebida.getHeader("X-Correlation-Id")).isNotBlank().isEqualTo(devolvido);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"telemetry", "insight", "report", "billing"})
+    void servicosNovosSemTokenRecebem401ENaoChegamAoServico(String servico) throws Exception {
+        client.get().uri("/api/v1/" + servico + "/qualquer").exchange()
+                .expectStatus().isUnauthorized()
+                .expectHeader().exists("X-Correlation-Id");
+        client.post().uri("/api/v1/billing/webhooks/stripe")
+                .header(HttpHeaders.CONTENT_TYPE, "application/json")
+                .bodyValue("{}")
+                .exchange().expectStatus().isUnauthorized();
+
+        assertThat(proximaRequisicaoDeServico()).isNull();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"telemetry", "insight", "report", "billing"})
+    void preflightCorsNosServicosNovos(String servico) {
+        client.options().uri("/api/v1/" + servico + "/qualquer")
+                .header(HttpHeaders.ORIGIN, "https://www.seniorinsight.com.br")
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "Authorization,X-Correlation-Id")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "https://www.seniorinsight.com.br");
+        client.options().uri("/api/v1/" + servico + "/qualquer")
+                .header(HttpHeaders.ORIGIN, "https://evil.example")
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                .exchange()
+                .expectStatus().isForbidden();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/v1/internal/idosos/42/vinculo/abc",
+            "/api/v1/idosos/internal",
+            "/api/v1/identity/internal/usuarios",
+            "/api/v1/notification/internal/envios",
+            "/api/v1/telemetry/internal/idosos/42",
+            "/api/v1/insight/internal/scores",
+            "/api/v1/report/internal/relatorios",
+            "/api/v1/billing/internal/assinaturas",
+            "/api/v1/telemetry/idosos/42/INTERNAL/x"
+    })
+    void internalComTokenRecebe404ENaoChegaAoServico(String caminho) throws Exception {
+        client.get().uri(cru(caminho))
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token(KEY, ISSUER))
+                .exchange()
+                .expectStatus().isNotFound();
+        client.post().uri(cru(caminho))
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token(KEY, ISSUER))
+                .header(HttpHeaders.CONTENT_TYPE, "application/json")
+                .bodyValue("{}")
+                .exchange()
+                .expectStatus().isNotFound();
+
+        assertThat(proximaRequisicaoDeServico()).isNull();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/v1/telemetry/%69nternal/idosos/42",
+            "/api/v1/billing/inter%6Eal/assinaturas",
+            "/api/v1/report/x/../internal/relatorios",
+            "/api/v1/insight/x/%2e%2e/internal/scores",
+            "/api/v1/telemetry/internal;v=1/idosos",
+            "/api/v1/billing/x%2Finternal/assinaturas"
+    })
+    void internalDisfarcadoNaoChegaAoServico(String caminho) throws Exception {
+        client.get().uri(cru(caminho))
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token(KEY, ISSUER))
+                .exchange()
+                .expectStatus().is4xxClientError();
+
+        assertThat(proximaRequisicaoDeServico()).isNull();
+    }
+
+    @Test
+    void internalForaDeApiV1NaoChegaAoServico() throws Exception {
+        client.get().uri("/internal/idosos/42/vinculo/abc").exchange().expectStatus().isUnauthorized();
+        client.get().uri("/internal/idosos/42/vinculo/abc")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token(KEY, ISSUER))
+                .exchange().expectStatus().isForbidden();
+
+        assertThat(proximaRequisicaoDeServico()).isNull();
+    }
+
+    @Test
+    void segmentoQueSoContemInternalContinuaRoteado() throws Exception {
+        client.get().uri("/api/v1/report/internalizacoes")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token(KEY, ISSUER))
+                .exchange().expectStatus().isOk();
+
+        assertThat(proximaRequisicaoDeServico().getPath()).isEqualTo("/v1/internalizacoes");
+    }
+
+    @Test
+    void todaRotaTemOPredicadoSemInternal() {
+        var definicoes = rotas.getRouteDefinitions().collectList().block();
+
+        assertThat(definicoes).extracting(RouteDefinition::getId).contains(
+                "identity-service", "notification-service", "care-service",
+                "telemetry-service", "insight-service", "report-service", "billing-service");
+        assertThat(definicoes).allSatisfy(rota -> assertThat(rota.getPredicates())
+                .as("predicados da rota %s", rota.getId())
+                .anyMatch(predicado -> "SemInternal".equals(predicado.getName())));
+    }
+
+    /** URI absoluta, sem passar pelo template do WebTestClient, para o path chegar ao gateway como está. */
+    private URI cru(String caminho) {
+        return URI.create("http://localhost:" + porta + caminho);
     }
 
     private static RecordedRequest proximaRequisicaoDeServico() throws InterruptedException {
