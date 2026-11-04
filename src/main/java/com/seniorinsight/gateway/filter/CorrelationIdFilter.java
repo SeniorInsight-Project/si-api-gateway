@@ -3,23 +3,29 @@ package com.seniorinsight.gateway.filter;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
-import org.springframework.cloud.gateway.filter.GatewayFilterChain;
-import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
-import org.springframework.http.HttpHeaders;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
+import org.springframework.web.server.WebFilter;
+import org.springframework.web.server.WebFilterChain;
 
 import reactor.core.publisher.Mono;
 
+/**
+ * Garante um X-Correlation-Id em toda requisição: reaproveita o do cliente se for válido,
+ * senão gera um UUID. O id segue para o serviço de destino e volta na resposta, inclusive em 401.
+ * É um WebFilter (e não GlobalFilter) para rodar antes do Spring Security.
+ */
 @Component
-public class CorrelationIdFilter implements GlobalFilter, Ordered {
+@Order(Ordered.HIGHEST_PRECEDENCE)
+public class CorrelationIdFilter implements WebFilter {
 
-    private static final String HEADER = "X-Correlation-Id";
+    public static final String HEADER = "X-Correlation-Id";
     private static final Pattern VALID_ID = Pattern.compile("[A-Za-z0-9._-]{1,64}");
 
     @Override
-    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+    public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         String suppliedId = exchange.getRequest().getHeaders().getFirst(HEADER);
         String correlationId = suppliedId != null && VALID_ID.matcher(suppliedId).matches()
                 ? suppliedId
@@ -30,10 +36,5 @@ public class CorrelationIdFilter implements GlobalFilter, Ordered {
                 .build();
         forwardedExchange.getResponse().getHeaders().set(HEADER, correlationId);
         return chain.filter(forwardedExchange);
-    }
-
-    @Override
-    public int getOrder() {
-        return Ordered.HIGHEST_PRECEDENCE;
     }
 }
