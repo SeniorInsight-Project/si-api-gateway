@@ -66,6 +66,7 @@ class GatewaySecurityTest {
         String base = BACKEND.url("").toString().replaceAll("/$", "");
         registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri", () -> ISSUER);
         registry.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri", () -> base + JWKS_PATH);
+        registry.add("gateway.rate-limit.enabled", () -> false);
         registry.add("IDENTITY_SERVICE_URI", () -> base);
         registry.add("NOTIFICATION_SERVICE_URI", () -> base);
         registry.add("CARE_SERVICE_URI", () -> base);

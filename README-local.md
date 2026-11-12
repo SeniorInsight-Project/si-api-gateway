@@ -29,6 +29,10 @@ O Compose do [si-infra](../si-infra-main/README.md) constrói e inicia este serv
 
 O gateway adiciona ou propaga `X-Correlation-Id`, limita o valor recebido a 64 caracteres alfanuméricos e o devolve na resposta. CORS aceita por padrão `http://localhost:3000` e `http://localhost:5173`, configurável por `GATEWAY_CORS_ALLOWED_ORIGINS`. CSRF está desativado para a API stateless com bearer token; o BFF com cookie e CSRF ainda não faz parte desta implementação.
 
+Todas as rotas `/api/v1/**` passam pelo filtro global de rate limit do Spring Cloud Gateway e usam Redis para compartilhar cotas entre réplicas. A chave é `gw:rl:{usuario}:{janela}` (identidade do `sub` validado no JWT); para o resgate público de pareamento, a identidade é o IP da conexão. `X-Forwarded-For` não é usado, pois só é confiável quando o proxy de entrada está configurado como confiável. O padrão é 600 requisições por janela de 60 segundos, configurável por `GATEWAY_RATE_LIMIT_REQUESTS_PER_WINDOW` e `GATEWAY_RATE_LIMIT_WINDOW_SECONDS`. Preflight `OPTIONS` não consome cota. Ao exceder, o Gateway responde `429`, `Retry-After` e os headers `X-RateLimit-Limit`, `X-RateLimit-Remaining` e `X-RateLimit-Reset`. Como toda janela fixa, o limite pode permitir rajadas na fronteira entre janelas; ajuste a duração e o total conforme os padrões observados.
+
+O filtro registra `gateway.rate_limit.requests` com os resultados `allowed`, `limited` e `redis_error`; não inclui usuário nem path nas tags. Os timers nativos de rota permanecem ativos e a tag de path continua desativada para controlar cardinalidade e evitar IDs em URLs. O Actuator expõe somente health/info; para coletar métricas, configure um endpoint de scrape protegido na infraestrutura. Se Redis falhar, o filtro falha fechado com `503` e `Retry-After: 1`, e incrementa `redis_error`.
+
 ## Stack
 
 - Java 21
