@@ -16,13 +16,15 @@ import java.util.List;
 
 /**
  * Toda rota /api/v1/** exige JWT do Keycloak (realm seniorinsight), inclusive as do care-service.
- * Exceções: preflight CORS, health do actuator e o resgate de código de pareamento (HU-007),
- * que é feito pelo aparelho do idoso antes de ele ter conta.
+ * Exceções: preflight CORS, health do actuator, o resgate de código de pareamento (HU-007),
+ * feito pelo aparelho do idoso antes de ele ter conta, e a renovação da sessão do aparelho
+ * do idoso (HU-007), chamada com o access token vencido e protegida pelo refresh token no corpo.
  */
 @Configuration(proxyBeanMethods = false)
 public class SecurityConfig {
 
     static final String RESGATE_PAREAMENTO = "/api/v1/identity/pareamentos/resgates";
+    static final String RENOVACAO_SESSAO_APARELHO = "/api/v1/identity/pareamentos/sessoes/*/renovacoes";
 
     @Bean
     SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
@@ -35,7 +37,7 @@ public class SecurityConfig {
                 .authorizeExchange(exchange -> exchange
                         .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .pathMatchers("/actuator/health", "/actuator/health/**").permitAll()
-                        .pathMatchers(HttpMethod.POST, RESGATE_PAREAMENTO).permitAll()
+                        .pathMatchers(HttpMethod.POST, RESGATE_PAREAMENTO, RENOVACAO_SESSAO_APARELHO).permitAll()
                         .pathMatchers("/api/v1/**").authenticated()
                         .anyExchange().denyAll())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))

@@ -170,6 +170,53 @@ class GatewaySecurityTest {
     }
 
     @Test
+    void renovacaoDeSessaoSemTokenChegaAoIdentity() throws Exception {
+        String sessaoId = UUID.randomUUID().toString();
+        client.post().uri("/api/v1/identity/pareamentos/sessoes/" + sessaoId + "/renovacoes")
+                .header(HttpHeaders.CONTENT_TYPE, "application/json")
+                .bodyValue("{\"refreshToken\":\"rt-teste\"}")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().exists("X-Correlation-Id");
+
+        RecordedRequest recebida = proximaRequisicaoDeServico();
+        assertThat(recebida).isNotNull();
+        assertThat(recebida.getMethod()).isEqualTo("POST");
+        assertThat(recebida.getPath()).isEqualTo("/v1/pareamentos/sessoes/" + sessaoId + "/renovacoes");
+        assertThat(recebida.getHeader("X-Correlation-Id")).isNotBlank();
+    }
+
+    @Test
+    void outrosMetodosNaRenovacaoContinuamExigindoToken() throws Exception {
+        String caminho = "/api/v1/identity/pareamentos/sessoes/" + UUID.randomUUID() + "/renovacoes";
+        client.get().uri(caminho).exchange().expectStatus().isUnauthorized();
+        client.put().uri(caminho)
+                .header(HttpHeaders.CONTENT_TYPE, "application/json")
+                .bodyValue("{}")
+                .exchange().expectStatus().isUnauthorized();
+        client.delete().uri(caminho).exchange().expectStatus().isUnauthorized();
+
+        assertThat(proximaRequisicaoDeServico()).isNull();
+    }
+
+    @Test
+    void caminhosVizinhosDaRenovacaoContinuamExigindoToken() throws Exception {
+        String sessaoId = UUID.randomUUID().toString();
+        client.get().uri("/api/v1/identity/pareamentos/sessoes/" + sessaoId)
+                .exchange().expectStatus().isUnauthorized();
+        client.post().uri("/api/v1/identity/pareamentos/sessoes/" + sessaoId)
+                .header(HttpHeaders.CONTENT_TYPE, "application/json")
+                .bodyValue("{}")
+                .exchange().expectStatus().isUnauthorized();
+        client.post().uri("/api/v1/identity/pareamentos/sessoes/" + sessaoId + "/extra/renovacoes")
+                .header(HttpHeaders.CONTENT_TYPE, "application/json")
+                .bodyValue("{}")
+                .exchange().expectStatus().isUnauthorized();
+
+        assertThat(proximaRequisicaoDeServico()).isNull();
+    }
+
+    @Test
     void healthEPreflightSaoPublicos() {
         client.get().uri("/actuator/health").exchange().expectStatus().isOk();
         client.options().uri("/api/v1/idosos")
