@@ -9,6 +9,8 @@ spring:
           jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8180/realms/seniorinsight/protocol/openid-connect/certs}
   cloud:
     gateway:
+      metrics:
+        enabled: true
       # Toda rota leva o predicado SemInternal: nenhum /internal/** dos serviços é alcançável pelo gateway
       # (sem rota que case, a resposta é 404). Rota nova também precisa dele; o GatewaySecurityTest confere.
       routes:
@@ -80,6 +82,14 @@ spring:
             - Path=/api/v1/**
             - name: SemInternal
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
+      timeout: ${REDIS_TIMEOUT:2s}
+
 server:
   port: ${SERVER_PORT:8080}
   forward-headers-strategy: framework
@@ -87,6 +97,10 @@ server:
 gateway:
   cors:
     allowed-origins: ${GATEWAY_CORS_ALLOWED_ORIGINS:https://www.seniorinsight.com.br,http://localhost:8081}
+  rate-limit:
+    enabled: ${GATEWAY_RATE_LIMIT_ENABLED:true}
+    requests-per-window: ${GATEWAY_RATE_LIMIT_REQUESTS_PER_WINDOW:600}
+    window-seconds: ${GATEWAY_RATE_LIMIT_WINDOW_SECONDS:60}
 
 management:
   endpoints:
